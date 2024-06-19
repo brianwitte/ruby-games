@@ -1,0 +1,146 @@
+NOTE: The Ruby debugger landscape should be explained as there are a few
+      options between the Ruby's standard library and broader community.
+
+Below is an excerpt from:
+url -> https://blog.pawandubey.com/explained-binding-pry-byebug-debugger
+author -> Pawan Dubey
+date -> 2022-01-09
+
+********************************************************************************
+
+There are a couple of different ways you might see a debugger invoked in
+Rubystan. The two major ones are byebug and binding.pry but a rare debugger is
+also seen from time to time. I will try to briefly explain the difference
+between the three.
+
+--------------------------------------------------------------------------------
+* Binding *
+--------------------------------------------------------------------------------
+
+To understand the debugging landscape in Rubystan, we must first understand this
+mysterious class called Binding. This class is used to encapsulate the current
+“execution context” of the program at any given point. The execution context can
+roughly be understood as a single frame in the program's execution stack, so it
+gives you access to all constants, variables and methods accessible in the
+current scope.
+
+In Rubystan, Kernel#binding returns the Binding for the current execution
+context. As the Kernel module is included by the Object class, this method is
+available to be called at any point in a Ruby program.
+
+Binding defines an eval instance method which can take an arbitrary Ruby
+program, and execute it in the context encapsulated by the Binding instance.
+
+class Foo
+  def initialize
+    @a = 5
+  end
+
+  def get_binding
+    binding # binding is a private method
+  end
+end
+
+
+foo = Foo.new
+foo.get_binding.eval("@a + 1")
+#=> 6
+
+This class is the basis of all debuggers and introspectors we will talk
+about. If you're wondering: yes, it's possible to get the binding from an
+instance of Binding itself similarly.
+
+--------------------------------------------------------------------------------
+* binding.pry *
+--------------------------------------------------------------------------------
+
+Now that we have established what binding does in our code, it's easier to
+determine what binding.pry does. It just calls the method pry on an instance of
+Binding!
+
+The gem pry is a drop-in replacement for the IRB REPL that ships with Ruby by
+default. Pry provides some extra niceties around the REPL, including the ability
+to move in and out of the context of objects, save the command history to a
+file, inspect the source of a method by name etc. Pry (like IRB), makes heavy
+use of Binding to accomplish all this. In this very early version of pry, you
+can see that the .repl method took a Binding instance as the only argument.
+
+In order to make our lives easier, pry also adds a #pry method on Object to open
+a REPL session anywhere in our program (much like a debugger, but not
+quite). This REPL session gives us the same capabilities as a normal REPL but it
+evaluates the code in the context of the current Binding. When invoked from the
+terminal via the executable, it starts the REPL in the context of the
+TOPLEVEL_BINDING, which is a special Binding instance that points to the “top
+level” context. You can think of it as main in other languages. In fact, if you
+open an irb or pry session and execute self, you will see that it's actually
+called main as well.
+
+Coming back to binding.pry, when you put that line in your code somewhere, all
+it does is call pry on the current binding for that scope, which opens a REPL
+session within that execution context. As mentioned previously, this is close to
+a debugger, but not quite. All you can do with this is execute code (like
+inspecting the variables in the scope), and then exit. There's no stepping
+functionality available.
+
+# after a binding.pry call
+[8] pry(main)> step
+NameError: undefined local variable or method `step' for main:Object
+
+However, that's not the complete truth. We may be able to make binding.pry
+behave like a debugger and use it to step through our code. But to get there, we
+have to look at byebug first.
+
+--------------------------------------------------------------------------------
+* Byebug *
+--------------------------------------------------------------------------------
+
+So we have a REPL, but we want to be able to step through code for it to be
+useful as a debugger. This is where byebug comes in. It's a gem which, like pry,
+uses Binding to provide powerful introspection functionality for our
+code. However, it also provides us with the ability to step through code with
+step (step into), next (step through), continue (continue execution to the end
+of the stack) etc.
+
+To access this, we just put byebug somewhere in our code and it takes care of
+grabbing the current binding, initializing a REPL and starting the debugging
+session for us. byebug is also a method that the gem adds on the Kernel module
+so that it's accessible everywhere.
+
+In a default Ruby environment, Byebug integrates with irb as the REPL as irb is
+available by default with Ruby. But we just discussed the awesomeness of pry, so
+here comes…
+
+--------------------------------------------------------------------------------
+* pry-byebug *
+--------------------------------------------------------------------------------
+
+As byebug doesn't care what REPL you're using, it's advantageous to use the best
+one (read: pry). The pry-byebug gem takes care of this by extending Byebug's
+command processor with pry.
+
+So if you have pry, byebug and pry-byebug installed (pry-byebug installs pry and
+byebug as dependencies, mind you), every time you debug using byebug, you will
+get a pry powered REPL for your debugging session.
+
+--------------------------------------------------------------------------------
+* binding.pry As a debugger *
+--------------------------------------------------------------------------------
+
+And this is how binding.pry gets the capability to step through code as a
+debugger. It's byebug behind the scenes, via pry-byebug.
+
+--------------------------------------------------------------------------------
+* So what's the difference between binding.pry and byebug, again? *
+--------------------------------------------------------------------------------
+
+As we saw, there's a lot of difference between them in isolation, however if you
+set them up together along with pry-byebug, the differences pretty much
+disappear. The only difference that remains is that with byebug, you get n, s, c
+etc as shortcut commands to execute next, step and continue, respectively. With
+binding.pry, pry-byebug disables these shortcuts as they might conflict with
+local variable names.
+
+However, it's good to keep in mind that binding.pry is not byebug. It's not even
+a debugger by itself, and only becomes one by the grace of pry-byebug.
+
+********************************************************************************

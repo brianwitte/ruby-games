@@ -1,1 +1,1 @@
-# learn-ruby
+# ruby-games
