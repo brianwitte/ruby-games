@@ -37,9 +37,11 @@
 
 # This is a comment
 
-# This is a multi-line comment.
-# The beginning line must start with "=begin"
-# and the ending line must start with...
+=begin
+This is a multi-line comment.
+The beginning line must start with "=begin"
+and the ending line must start with...
+=end
 
 puts "This is not a comment. Neither are the 3 lines under this."
 puts "They are not between lines prefixed =begin/=end."
